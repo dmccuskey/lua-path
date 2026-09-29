@@ -1,7 +1,7 @@
 --====================================================================--
--- dmc_corona/dmc_path.lua
+-- lua_path.lua
 --
--- Documentation: http://docs.davidmccuskey.com/
+-- Documentation: https://github.com/dmccuskey/lua-path
 --====================================================================--
 
 --[[
@@ -33,110 +33,25 @@ SOFTWARE.
 
 
 --====================================================================--
---== DMC Corona Library : DMC Patch
+--== DMC Lua Library : Lua Path
 --====================================================================--
 
 
 -- Semantic Versioning Specification: http://semver.org/
 
-local VERSION = "0.1.0"
+local VERSION = "0.2.0"
 
 
 
 --====================================================================--
---== DMC Corona Library Config
---====================================================================--
-
-
---====================================================================--
---== Support Functions
-
-
-local Utils = {} -- make copying from Utils easier
-
-
---== Start: copy from lua_utils ==--
-
--- extend()
--- Copy key/values from one table to another
--- Will deep copy any value from first table which is itself a table.
---
--- @param fromTable the table (object) from which to take key/value pairs
--- @param toTable the table (object) in which to copy key/value pairs
--- @return table the table (object) that received the copied items
---
-function Utils.extend( fromTable, toTable )
-
-	if not fromTable or not toTable then
-		error( "table can't be nil" )
-	end
-	function _extend( fT, tT )
-
-		for k,v in pairs( fT ) do
-
-			if type( fT[ k ] ) == "table" and
-				type( tT[ k ] ) == "table" then
-
-				tT[ k ] = _extend( fT[ k ], tT[ k ] )
-
-			elseif type( fT[ k ] ) == "table" then
-				tT[ k ] = _extend( fT[ k ], {} )
-
-			else
-				tT[ k ] = v
-			end
-		end
-
-		return tT
-	end
-
-	return _extend( fromTable, toTable )
-end
-
---== End: copy from lua_utils ==--
-
-
-
---====================================================================--
---== Configuration
-
-
-local dmc_lib_data
-
--- boot dmc_corona with boot script or
--- setup basic defaults if it doesn't exist
---
-if false == pcall( function() require( 'dmc_corona_boot' ) end ) then
-	_G.__dmc_corona = {
-		dmc_corona={},
-	}
-end
-
-dmc_lib_data = _G.__dmc_corona
-
-
-
---====================================================================--
---== DMC Patch
---====================================================================--
-
-
---====================================================================--
---== Configuration
-
-
-dmc_lib_data.dmc_patch = dmc_lib_data.dmc_patch or {}
-
-local DMC_PATCH_DEFAULTS = {
-}
-
-local dmc_patch_data = Utils.extend( dmc_lib_data.dmc_patch, DMC_PATCH_DEFAULTS )
+--== Setup, Constants
 
 
 local assert = assert
-local sfind = string.find
 local sgmatch = string.gmatch
+local sgsub = string.gsub
 local smatch = string.match
+local ssub = string.sub
 local tconcat = table.concat
 local tinsert = table.insert
 local tremove = table.remove
@@ -145,13 +60,31 @@ local type = type
 
 
 --====================================================================--
---== Imports
+--== Support Functions
 
 
-local Utils = {}
+-- escape every non-alphanumeric character, so the string
+-- matches itself in a pattern
+local function escapePattern( str )
+	return ( sgsub( str, '(%W)', '%%%1' ) )
+end
 
 
-function Utils.guessPathPlatform( path )
+
+--====================================================================--
+--== Path Facade
+--====================================================================--
+
+
+local Path = {
+	__version=VERSION
+}
+
+
+-- guessPathPlatform()
+-- returns the separator used most in path: '\\' or '/'
+--
+function Path.guessPathPlatform( path )
 
 	local win, ios = 0, 0
 	for match in sgmatch( path, '\\' ) do
@@ -168,42 +101,70 @@ function Utils.guessPathPlatform( path )
 end
 
 
-function Utils.getPath( pathObj, filePath )
-	-- print( "Utils.getPath", pathObj, filePath )
+-- getPath()
+-- returns filePath placed in the folder of pathObj, a table from parse()
+-- (its dir and path), with pathObj's separator
+-- an absolute filePath is returned as it is
+--
+function Path.getPath( pathObj, filePath )
+	-- print( "Path.getPath", pathObj, filePath )
 	if filePath==nil then filePath='' end
 	--==--
-	local fileInfo = Utils.parse( filePath )
-	fileInfo.dir = pathObj.dir
-	return Utils.buildPath( fileInfo )
+	local fileInfo = Path.parse( filePath )
+	if fileInfo.isAbs then return Path.buildPath( fileInfo ) end
+
+	local dir = {}
+	for _, part in ipairs( pathObj.dir or {} ) do
+		tinsert( dir, part )
+	end
+	for _, part in ipairs( pathObj.path or {} ) do
+		tinsert( dir, part )
+	end
+	fileInfo.dir = dir
+	fileInfo.isAbs = pathObj.isAbs
+	fileInfo.sep = pathObj.sep
+	return Path.buildPath( fileInfo )
 end
 
 
--- split string up in parts, using separator
+-- split()
+-- split string up in parts, using a one-character separator
+-- (default: any whitespace)
 -- returns array of pieces
-function Utils.split( str, sep )
+--
+function Path.split( str, sep )
+	local pattern
 	if sep == nil then
-		sep = "%s"
+		pattern = "%s"
+	else
+		pattern = escapePattern( sep )
 	end
 	local t, i = {}, 1
-	for str in sgmatch( str, "([^"..sep.."]+)") do
-		t[i] = str
+	for part in sgmatch( str, "([^"..pattern.."]+)") do
+		t[i] = part
 		i = i + 1
 	end
 	return t
 end
 
-function Utils.parse( filePath, sep )
-	-- print("Utils.parse", filePath )
-	if sep==nil then sep=Utils.guessPathPlatform( filePath ) end
+
+-- parse()
+-- break a file path (or a require string, with sep '.') into its parts
+-- sep is guessed from the path when not given
+--
+function Path.parse( filePath, sep )
+	-- print("Path.parse", filePath )
+	assert( type(filePath)=='string', "parse: expected string for filePath" )
+	if sep==nil then sep=Path.guessPathPlatform( filePath ) end
 	--==--
 	local isAbs = false
 	local parts, last
 	local filename, name, ext
 
-	if sfind( filePath, sep )==1 then
+	if ssub( filePath, 1, #sep )==sep then
 		isAbs=true
 	end
-	parts = Utils.split( filePath, sep )
+	parts = Path.split( filePath, sep )
 	last = parts[#parts] or ''
 	if smatch( last, '[%.]' ) then
 		filename = tremove( parts, #parts )
@@ -213,19 +174,20 @@ function Utils.parse( filePath, sep )
 	return {
 		original=filePath,
 		isAbs=isAbs,
+		sep=sep,
 		dir={},
 		path=parts,
 		filename=filename,
 		name=name,
 		ext=ext,
 
-		getPath = Utils.getPath
+		getPath = Path.getPath
 	}
 
 end
 
 
-function Utils._concatPath( params )
+function Path._concatPath( params )
 	local dir = params.dir or {}
 	local isAbs = params.isAbs or false
 	local name = params.name
@@ -248,10 +210,14 @@ function Utils._concatPath( params )
 	return tconcat( res, sep )
 end
 
-function Utils.buildRequire( parts, sep )
+
+-- buildRequire()
+-- returns a require string from a table from parse()
+--
+function Path.buildRequire( parts, sep )
 	assert( type(parts)=='table' )
 	if sep==nil then sep='.' end
-	return Utils._concatPath{
+	return Path._concatPath{
 		dir=parts.dir,
 		path=parts.path,
 		name=parts.name,
@@ -260,11 +226,17 @@ function Utils.buildRequire( parts, sep )
 	}
 end
 
-function Utils.buildPath( parts, sep )
+
+-- buildPath()
+-- returns a file path from a table from parse()
+-- sep defaults to '\\' for a path parsed with '\\', otherwise '/'
+--
+function Path.buildPath( parts, sep )
 	assert( type(parts)=='table' )
-	-- @TODO: do separator
-	if sep==nil then sep='/' end
-	return Utils._concatPath{
+	if sep==nil then
+		if parts.sep=='\\' then sep='\\' else sep='/' end
+	end
+	return Path._concatPath{
 		dir=parts.dir,
 		path=parts.path,
 		name=parts.filename,
@@ -276,4 +248,4 @@ end
 
 
 
-return Utils
+return Path
