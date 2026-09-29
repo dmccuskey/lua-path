@@ -83,7 +83,7 @@ To update, pull the repository again (`git -C lua-path pull`), or replace `lua_p
 
 ## In Solar2D
 
-The DMC Solar2D libraries carry a copy in their `dmc_corona/lib/dmc_lua/` folder, as part of [DMC-Lua-Library](https://github.com/dmccuskey/DMC-Lua-Library). [dmc-path](https://github.com/dmccuskey/dmc-path) is the Solar2D version; it still holds its own copy of the older code, and is planned to load this one instead.
+The DMC Solar2D libraries carry a copy in their `dmc_corona/lib/dmc_lua/` folder, as part of [DMC-Lua-Library](https://github.com/dmccuskey/DMC-Lua-Library). [dmc-path](https://github.com/dmccuskey/dmc-path) is the Solar2D version: it loads this module from there.
 
 ## Known Issues
 
