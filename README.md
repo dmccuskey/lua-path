@@ -79,6 +79,19 @@ If it shows `module 'lua_path' not found`, run it from the folder that holds `lu
 
 `parse()` returns a table: `path` (the folders, a list), `filename`, `name`, `ext`, `isAbs`, `sep` (the separator it used), `original`, and `dir`, an empty list that `buildPath()` and `buildRequire()` put before `path`. Fill `dir` to put a path inside another folder. `buildPath()` and `buildRequire()` take a separator as a second argument to override the default: `\` for a path parsed with `\`, `/` otherwise, and `.` for a `require` string.
 
+lua-path can't see the file system, so `parse()` tells a file from a folder by the path's last part alone:
+
+| last part | is | example |
+|---|---|---|
+| has a dot | a file | `app/v1.2`: file `v1.2`, `name` `v1`, `ext` `2` |
+| followed by the separator | a folder | `app/v1.2/`: folders `app`, `v1.2` |
+| `.` or `..` | a folder | `a/..`: folders `a`, `..` |
+| has no dot | a folder | `app/lib`: folders `app`, `lib` |
+
+A name with only a leading dot, or a trailing one, has no extension: `.hidden` has the `name` `.hidden` and no `ext`.
+
+`buildRequire()` raises an error for a path that has no `require` string: an absolute path (`/usr/x.lua`), a `.` or `..` part (`../a.lua`), or a part that contains the separator (`app/v1.2/a.lua`, `a.tar.gz`).
+
 To update, pull the repository again (`git -C lua-path pull`), or replace `lua_path.lua` with the newer one.
 
 ## In Solar2D
@@ -87,8 +100,8 @@ The DMC Solar2D libraries carry a copy in their `dmc_corona/lib/dmc_lua/` folder
 
 ## Known Issues
 
-- **Only the last part of a path can be a file, and any dot makes it one.** `app/v1.2` is the folder `app` and a file named `v1` with extension `2`; `app/v1.2/` (with the slash) is two folders. `.hidden` is a file with no `name`, so `buildRequire()` leaves it out.
-- **`buildRequire()` doesn't check that the result is a valid `require` string.** An absolute path starts it with a `.` (`/usr/x.lua` gives `.usr.x`), and `..` stays in (`../a.lua` gives `...a`).
+- **A file with no dot in its name is taken as a folder.** `bin/lua` is two folders, since only a dot marks the last part as a file.
+- **`..` isn't resolved.** `a/../b.lua` keeps its three parts; `buildRequire()` raises an error for it.
 - **Windows drive letters aren't recognized.** `C:\game\a.lua` isn't absolute, and `C:` is its first folder.
 - The separator is one character: `split()` treats a longer one as a set of characters.
 
@@ -106,7 +119,7 @@ busted spec
 
 ```text
 ++++++++++++++++++++++++
-24 successes / 0 failures / 0 errors / 0 pending : 0.002839 seconds
+33 successes / 0 failures / 0 errors / 0 pending : 0.002839 seconds
 ```
 
 The tests cover each function, with `/` and `\` paths and `require` strings.
